@@ -16,6 +16,7 @@
   
   <!-- Stylesheets -->
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  {% block extra_css %}{% endblock %}
   
   {% block extra_head %}{% endblock %}
 </head>
@@ -150,5 +151,6 @@
   </script>
 
   {% block scripts %}{% endblock %}
+  {% block extra_js %}{% endblock %}
 </body>
 </html>

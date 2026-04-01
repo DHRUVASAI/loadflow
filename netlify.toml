@@ -1,2 +1,10 @@
 [build]
-  publish = "frontend"
+  publish = "static"
+  command = "npm run build"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+

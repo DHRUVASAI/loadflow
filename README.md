@@ -1,3 +1,11 @@
+---
+title: LoadFlow Simulator
+emoji: 📈
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 7860
+---
 # LoadFlow
 
 **Intelligent Load Balancer Simulator**

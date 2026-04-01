@@ -7,8 +7,8 @@ API_GLOBAL = """
 <script>
   // Point this to your Hugging Face Space backend URL once deployed
   // Format: "https://<hf_username>-<space_name>.hf.space"
-  // Example: "https://dhruvasai-loadflow.hf.space"
-  const API_BASE_URL = "https://dhruvasai-loadflow.hf.space"; 
+  // Example: "https://agentvds007-loadflow.hf.space"
+  const API_BASE_URL = "https://agentvds007-loadflow.hf.space"; 
 </script>
 </head>
 """
@@ -20,7 +20,6 @@ for filename in os.listdir(frontend_dir):
             content = f.read()
             
         # 1. Strip the old API_BASE_URL if it exists
-        # We replace the script block that sets API_BASE_URL.
         content = re.sub(
             r'<script>\s*// Point this to your.*?const API_BASE_URL = ".*?";\s*</script>\s*</head>', 
             '</head>', 

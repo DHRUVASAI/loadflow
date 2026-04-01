@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Servers — Load Balancer Simulator</title>
+  <meta name="description" content="LoadFlow is an interactive load balancer simulator. Monitor, compare, and scale your virtual server infrastructure in real-time.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="./css/style.css">
+  
+  
+
+<script>
+  // Point this to your Render.com backend URL once deployed
+  // e.g. "https://loadflow-api.onrender.com"
+  const API_BASE_URL = "https://loadflow.onrender.com"; 
+</script>
+</head>
+
+<body>
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+  
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <a href="landing.html" class="navbar-brand">
+        <!-- LoadFlow logo: abstract routing / flow paths -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+        LoadFlow
+      </a>
+      <ul class="navbar-nav">
+        <li>
+          <a href="index.html" class="nav-link ">
+            Dashboard
+          </a>
+        </li>
+        <li>
+          <a href="servers_page.html" class="nav-link ">
+            Servers
+          </a>
+        </li>
+        <li>
+          <a href="compare_page.html" class="nav-link ">
+            Compare
+          </a>
+        </li>
+        <li>
+          <a href="history.html" class="nav-link ">
+            History
+          </a>
+        </li>
+      </ul>
+      <!-- AWS Connection Badge -->
+      <div id="awsStatusBadge" style="
+        display: inline-flex; align-items: center; gap: 7px;
+        padding: 5px 13px; border-radius: 100px; font-size: 12px; font-weight: 600;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.04);
+        color: #94A3B8; cursor: default;
+        transition: all 0.3s; position: relative;
+      " title="Checking AWS status...">
+        <span id="awsStatusDot" style="width:7px;height:7px;border-radius:50%;background:#64748B;flex-shrink:0;"></span>
+        <span id="awsStatusText">Connecting…</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Flash Messages -->
+  
+    
+  
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="container">
+      
+<!-- Page Header -->
+<div class="page-header">
+  <h1 class="page-title">Server Management</h1>
+  <p class="page-subtitle">Monitor and control individual server instances</p>
+</div>
+
+<!-- Server Controls -->
+<div class="flex-between mb-3">
+  <div></div>
+  <div class="btn-group">
+    <button class="btn btn-primary" onclick="deployServer()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Deploy Server
+    </button>
+  </div>
+</div>
+
+<!-- Server Grid -->
+<div id="serverGrid" class="grid grid-3">
+  <div class="card text-center">
+    <div style="padding: 40px 20px;">
+      <span class="loading" style="width: 32px; height: 32px; border-width: 3px;"></span>
+      <p class="text-muted mt-2">Loading servers...</p>
+    </div>
+  </div>
+</div>
+
+    </div>
+  </main>
+
+  <!-- Global Toast Helper -->
+  <script>
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // AWS Status Badge
+    async function refreshAwsStatus() {
+      try {
+        const res = await fetch(API_BASE_URL + '/api/status');
+        const d = await res.json();
+        const badge = document.getElementById('awsStatusBadge');
+        const dot   = document.getElementById('awsStatusDot');
+        const txt   = document.getElementById('awsStatusText');
+        if (!badge) return;
+
+        if (d.aws_connected) {
+          dot.style.background = '#4ADE80';
+          dot.style.boxShadow  = '0 0 6px #4ADE80';
+          txt.textContent = 'AWS Live';
+          badge.style.background    = 'rgba(74,222,128,0.08)';
+          badge.style.border        = '1px solid rgba(74,222,128,0.25)';
+          badge.style.color         = '#4ADE80';
+          const region  = d.region  || '';
+          const account = d.account_id || '';
+          badge.title = `Connected to AWS\nRegion: ${region}${account ? '\nAccount: ' + account : ''}`;
+        } else if (!d.demo_mode) {
+          // Credentials set but STS failed
+          dot.style.background = '#F59E0B';
+          dot.style.boxShadow  = '0 0 6px #F59E0B';
+          txt.textContent = 'AWS (unverified)';
+          badge.style.background = 'rgba(245,158,11,0.08)';
+          badge.style.border     = '1px solid rgba(245,158,11,0.25)';
+          badge.style.color      = '#F59E0B';
+          badge.title = `Credentials configured but STS could not verify.\nRegion: ${d.region || ''}`;
+        } else {
+          dot.style.background = '#64748B';
+          dot.style.boxShadow  = 'none';
+          txt.textContent = 'Demo Mode';
+          badge.style.background = 'rgba(255,255,255,0.04)';
+          badge.style.border     = '1px solid rgba(255,255,255,0.08)';
+          badge.style.color      = '#94A3B8';
+          badge.title = 'Running in demo mode — no real AWS calls.';
+        }
+      } catch(e) {
+        const txt = document.getElementById('awsStatusText');
+        if (txt) txt.textContent = 'Status unknown';
+      }
+    }
+    document.addEventListener('DOMContentLoaded', refreshAwsStatus);
+  </script>
+
+  
+<script>
+  let servers = [];
+  let charts = {};
+  let updateInterval;
+
+  // Fetch server data
+  async function fetchServers() {
+    try {
+      const res = await fetch(API_BASE_URL + '/api/servers');
+      const data = await res.json();
+      servers = data.servers || [];
+      renderServers();
+    } catch (error) {
+      console.error('Error fetching servers:', error);
+      document.getElementById('serverGrid').innerHTML = `
+        <div class="card">
+          <div class="alert alert-error">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            Failed to load servers. Please try again.
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  // Render server cards
+  function renderServers() {
+    const grid = document.getElementById('serverGrid');
+    
+    if (servers.length === 0) {
+      grid.innerHTML = `
+        <div class="card">
+          <div class="alert alert-info">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="16" x2="12" y2="12"/>
+              <line x1="12" y1="8" x2="12.01" y2="8"/>
+            </svg>
+            No servers configured
+          </div>
+        </div>
+      `;
+      return;
+    }
+
+    // DOM Diffing: if same number of servers, just update values and charts
+    const currentCards = grid.querySelectorAll('.card');
+    if (currentCards.length === servers.length && !grid.querySelector('.alert-info')) {
+        servers.forEach(server => {
+            const sid = server.id;
+            
+            const badge = document.getElementById('badge-' + sid);
+            if (badge) {
+                badge.className = 'badge ' + (server.health === 'healthy' ? 'badge-success' : 'badge-error');
+                badge.textContent = server.status || 'unknown';
+            }
+            
+            const elReq = document.getElementById('req-' + sid);
+            if (elReq) elReq.textContent = server.requests_handled || 0;
+            
+            const elConn = document.getElementById('conn-' + sid);
+            if (elConn) elConn.textContent = server.connections || 0;
+            
+            const elResp = document.getElementById('resp-' + sid);
+            if (elResp) elResp.textContent = Math.round(server.response_time || 0) + 'ms';
+            
+            const elCpuTxt = document.getElementById('cpu-' + sid);
+            if (elCpuTxt) elCpuTxt.textContent = Math.round(server.cpu_percent || 0) + '%';
+            
+            const elCpuLoad = document.getElementById('load-' + sid);
+            if (elCpuLoad) elCpuLoad.textContent = Math.round(server.cpu_percent || 0) + '%';
+            
+            const elBar = document.getElementById('bar-' + sid);
+            if (elBar) elBar.style.width = Math.min(server.cpu_percent || 0, 100) + '%';
+            
+            // Push data into existing chart smoothly WITHOUT animation flashing
+            const chart = charts[sid];
+            if (chart && chart.data.datasets.length > 0) {
+                const dataArr = chart.data.datasets[0].data;
+                dataArr.shift(); // remove oldest point
+                dataArr.push(server.response_time || 0); // push new point
+                chart.update('none'); // Update smoothly without intro animation
+            }
+        });
+        return;
+    }
+
+    // Force Full Render (Initial load, or Server count changed)
+    grid.innerHTML = servers.map(server => `
+      <div class="card fade-in">
+        <div class="card-header">
+          <div>
+            <h3 class="card-title">${server.name || server.id}</h3>
+            <div class="text-small text-muted">${server.ip || 'N/A'}</div>
+          </div>
+          <span id="badge-${server.id}" class="badge ${server.health === 'healthy' ? 'badge-success' : 'badge-error'}">
+            ${server.status || 'unknown'}
+          </span>
+        </div>
+        
+        <div class="card-body" style="padding: 0 24px 24px;">
+          <!-- Stats -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+            <div>
+              <div class="text-small text-muted mb-1">Requests</div>
+              <div id="req-${server.id}" style="font-size: 24px; font-weight: 700;">${server.requests_handled || 0}</div>
+            </div>
+            <div>
+              <div class="text-small text-muted mb-1">Active Conn.</div>
+              <div id="conn-${server.id}" style="font-size: 24px; font-weight: 700;">${server.connections || 0}</div>
+            </div>
+            <div>
+              <div class="text-small text-muted mb-1">Avg Response</div>
+              <div id="resp-${server.id}" style="font-size: 18px; font-weight: 600; color: var(--accent-primary);">${Math.round(server.response_time || 0)}ms</div>
+            </div>
+            <div>
+              <div class="text-small text-muted mb-1">CPU Usage</div>
+              <div id="cpu-${server.id}" style="font-size: 18px; font-weight: 600; color: var(--success);">${Math.round(server.cpu_percent || 0)}%</div>
+            </div>
+          </div>
+
+          <!-- CPU Usage Progress -->
+          <div class="mb-2">
+            <div class="flex-between mb-1">
+              <span class="text-small text-muted">Load</span>
+              <span id="load-${server.id}" class="text-small text-muted">${Math.round(server.cpu_percent || 0)}%</span>
+            </div>
+            <div class="progress">
+              <div id="bar-${server.id}" class="progress-bar" style="width: ${Math.min(server.cpu_percent || 0, 100)}%"></div>
+            </div>
+          </div>
+
+          <!-- Chart -->
+          <div style="height: 150px; margin: 16px -8px 16px;">
+            <canvas id="chart-${server.id}"></canvas>
+          </div>
+
+          <!-- Actions -->
+          <div class="btn-group" style="width: 100%;">
+            ${server.status === 'running' 
+              ? `<button class="btn btn-danger btn-sm" onclick="toggleServer('${server.id}', 'stop')" style="flex: 1;">
+                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                     <rect x="6" y="4" width="4" height="16"/>
+                     <rect x="14" y="4" width="4" height="16"/>
+                   </svg>
+                   Stop
+                 </button>`
+              : `<button class="btn btn-success btn-sm" onclick="toggleServer('${server.id}', 'start')" style="flex: 1;">
+                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                     <polygon points="5 3 19 12 5 21 5 3"/>
+                   </svg>
+                   Start
+                 </button>`
+            }
+            <button class="btn btn-secondary btn-sm" onclick="viewMetrics('${server.id}')" style="flex: 1;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 3v18h18"/>
+                <path d="M18 17V9"/>
+                <path d="M13 17V5"/>
+                <path d="M8 17v-3"/>
+              </svg>
+              Metrics
+            </button>
+          </div>
+        </div>
+      </div>
+    `).join('');
+
+    // Initialize charts for each server
+    setTimeout(() => {
+      servers.forEach(server => {
+        createServerChart(server);
+      });
+    }, 100);
+  }
+
+  // Create chart for individual server
+  function createServerChart(server) {
+    const canvas = document.getElementById(`chart-${server.id}`);
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    
+    // Destroy existing chart if it exists
+    if (charts[server.id]) {
+      charts[server.id].destroy();
+    }
+
+    // Generate dummy historical data for visualization
+    const labels = Array.from({length: 10}, (_, i) => `T-${10-i}`);
+    const data = Array.from({length: 10}, () => 
+      Math.floor(Math.random() * 50) + (server.response_time || 0) - 25
+    );
+    data.push(server.response_time || 0);
+
+    charts[server.id] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Response Time (ms)',
+          data: data,
+          borderColor: '#3B82F6',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          fill: true,
+          tension: 0.4,
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            mode: 'index',
+            intersect: false,
+            backgroundColor: 'rgba(23, 43, 77, 0.95)',
+            titleFont: { family: 'Inter' },
+            bodyFont: { family: 'Inter' },
+            padding: 10,
+            displayColors: false
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            display: false
+          },
+          x: {
+            display: false
+          }
+        },
+        interaction: {
+          mode: 'nearest',
+          axis: 'x',
+          intersect: false
+        }
+      }
+    });
+  }
+
+  // Toggle server status
+  async function toggleServer(serverId, action) {
+    const btn = event.target.closest('button');
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span>';
+
+    try {
+      const res = await fetch(`/api/servers/${serverId}/${action}`, { method: 'POST' });
+      if (res.ok) {
+        await fetchServers();
+      } else {
+        alert(`Failed to ${action} server`);
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+      }
+    } catch (error) {
+      console.error(`Error ${action}ing server:`, error);
+      alert(`Error: Could not ${action} server`);
+      btn.innerHTML = originalHTML;
+      btn.disabled = false;
+    }
+  }
+
+  // View server metrics in custom HTML Modal popup
+  async function viewMetrics(serverId) {
+    try {
+      const res = await fetch(`/api/servers/${serverId}/metrics`);
+      const data = await res.json();
+      
+      const modal = document.getElementById('metricsModal');
+      document.getElementById('modal-title').textContent = 'Metrics for ' + serverId;
+      document.getElementById('modal-req').textContent = data.request_count.toLocaleString();
+      document.getElementById('modal-conn').textContent = data.active_connections;
+      document.getElementById('modal-resp').textContent = data.avg_response_time + 'ms';
+      document.getElementById('modal-cpu').textContent = data.cpu_usage + '%';
+      
+      modal.classList.add('active');
+    } catch (error) {
+      console.error('Error fetching metrics:', error);
+      showToast('Failed to load server metrics', 'error');
+    }
+  }
+
+  function closeMetrics() {
+    document.getElementById('metricsModal').classList.remove('active');
+  }
+
+  // Initialize
+  document.addEventListener('DOMContentLoaded', () => {
+    fetchServers();
+    
+    // Auto-refresh every 3 seconds
+    updateInterval = setInterval(fetchServers, 3000);
+  });
+
+  // Cleanup
+  window.addEventListener('beforeunload', () => {
+    if (updateInterval) clearInterval(updateInterval);
+    Object.values(charts).forEach(chart => chart.destroy());
+  });
+
+  // Deploy a new server (calls /api/servers/deploy — real EC2 in live mode, fake in demo)
+  async function deployServer() {
+    const btn = event.target.closest('button');
+    const originalHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> Deploying…';
+
+    try {
+      const res = await fetch(API_BASE_URL + '/api/servers/deploy', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        const isDemo = data.server && data.server.demo;
+        const label = isDemo ? '(demo)' : '🟢 AWS EC2';
+        showToast(`Server ${data.server.name} deployed ${label}`, 'success');
+        await fetchServers();
+        // Animate the new card
+        const grid = document.getElementById('serverGrid');
+        if (grid && grid.lastElementChild) {
+          grid.lastElementChild.classList.add('card-new');
+        }
+      } else {
+        showToast(data.error || 'Failed to deploy server', 'error');
+      }
+    } catch (error) {
+      console.error('Error deploying server:', error);
+      showToast('Error: Could not deploy server', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = originalHTML;
+    }
+  }
+
+</script>
+
+<!-- Metrics Modal Overlay -->
+<div class="modal-overlay" id="metricsModal" onclick="if(event.target === this) closeMetrics();">
+  <div class="modal-content">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-title">Server Metrics</div>
+      <button class="modal-close" onclick="closeMetrics();">×</button>
+    </div>
+    
+    <div class="metric-row">
+      <span class="metric-label">Total Requests Handled</span>
+      <span class="metric-value" id="modal-req">0</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Active Connections</span>
+      <span class="metric-value" id="modal-conn" style="color: var(--accent-primary);">0</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">Average Response Time</span>
+      <span class="metric-value" id="modal-resp">0ms</span>
+    </div>
+    <div class="metric-row">
+      <span class="metric-label">System CPU Usage</span>
+      <span class="metric-value" id="modal-cpu" style="color: var(--warning);">0%</span>
+    </div>
+    
+    <button class="btn btn-secondary" style="width: 100%; margin-top: 24px;" onclick="closeMetrics()">Close</button>
+  </div>
+</div>
+
+
+</body>
+</html>

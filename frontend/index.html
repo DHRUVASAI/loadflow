@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard — Load Balancer Simulator</title>
+  <meta name="description" content="LoadFlow is an interactive load balancer simulator. Monitor, compare, and scale your virtual server infrastructure in real-time.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="./css/style.css">
+  
+  
+
+<script>
+  // Point this to your Render.com backend URL once deployed
+  // e.g. "https://loadflow-api.onrender.com"
+  const API_BASE_URL = "https://loadflow.onrender.com"; 
+</script>
+</head>
+
+<body>
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+  
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <a href="landing.html" class="navbar-brand">
+        <!-- LoadFlow logo: abstract routing / flow paths -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+        LoadFlow
+      </a>
+      <ul class="navbar-nav">
+        <li>
+          <a href="index.html" class="nav-link ">
+            Dashboard
+          </a>
+        </li>
+        <li>
+          <a href="servers_page.html" class="nav-link ">
+            Servers
+          </a>
+        </li>
+        <li>
+          <a href="compare_page.html" class="nav-link ">
+            Compare
+          </a>
+        </li>
+        <li>
+          <a href="history.html" class="nav-link ">
+            History
+          </a>
+        </li>
+      </ul>
+      <!-- AWS Connection Badge -->
+      <div id="awsStatusBadge" style="
+        display: inline-flex; align-items: center; gap: 7px;
+        padding: 5px 13px; border-radius: 100px; font-size: 12px; font-weight: 600;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.04);
+        color: #94A3B8; cursor: default;
+        transition: all 0.3s; position: relative;
+      " title="Checking AWS status...">
+        <span id="awsStatusDot" style="width:7px;height:7px;border-radius:50%;background:#64748B;flex-shrink:0;"></span>
+        <span id="awsStatusText">Connecting…</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Flash Messages -->
+  
+    
+  
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="container">
+      
+<!-- Page Header -->
+<div class="page-header">
+  <h1 class="page-title">Load Balancer Dashboard</h1>
+  <p class="page-subtitle">Monitor and control your load balancing system in real-time</p>
+</div>
+
+<!-- Stats Grid -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Requests</div>
+    <div class="stat-value" id="totalRequests">0</div>
+    <div class="stat-change neutral">
+      <span id="requestRate">0/min</span>
+    </div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Active Servers</div>
+    <div class="stat-value" id="activeServers">0</div>
+    <div class="stat-change positive" id="serverStatus">All systems operational</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Avg Response Time</div>
+    <div class="stat-value" id="avgResponseTime">0ms</div>
+    <div class="stat-change neutral" id="responseChange">Real-time</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Current Algorithm</div>
+    <div class="stat-value" style="font-size: 20px;" id="currentAlgorithm">Round Robin</div>
+    <div class="stat-change neutral">Load balancing</div>
+  </div>
+</div>
+
+<!-- Control Panel & Chart -->
+<div class="grid grid-2">
+  <!-- Control Panel -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Control Panel</h3>
+    </div>
+    <div class="card-body" style="padding: 0 24px 24px;">
+      <!-- Algorithm Selection -->
+      <div class="form-group">
+        <label class="form-label">Load Balancing Algorithm</label>
+        <div class="segmented-control">
+          <button class="seg-btn active" id="btn-round_robin" onclick="setAlgorithm('round_robin')">Round Robin</button>
+          <button class="seg-btn" id="btn-least_connections" onclick="setAlgorithm('least_connections')">Least Conn</button>
+          <button class="seg-btn" id="btn-weighted" onclick="setAlgorithm('weighted')">Weighted</button>
+        </div>
+      </div>
+
+      <!-- Request Controls -->
+      <div class="form-group">
+        <label class="form-label">Send Requests</label>
+        <div class="btn-group">
+          <button class="btn btn-primary" onclick="sendSingleRequest()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+            </svg>
+            Send 1
+          </button>
+          <button class="btn btn-secondary" onclick="sendMultiple(10)">Send 10</button>
+          <button class="btn btn-secondary" onclick="sendMultiple(100)">Send 100</button>
+          <button class="btn btn-secondary" id="autoTrafficBtn" onclick="toggleAutoTraffic()" style="border-color: #4ADE80; color: #4ADE80;">Start Auto ⚡</button>
+        </div>
+      </div>
+
+      <!-- System Controls -->
+      <div class="form-group" style="margin-bottom: 0;">
+        <label class="form-label">System Actions</label>
+        <div class="btn-group">
+          <button class="btn btn-danger" onclick="resetSystem()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
+              <path d="M21 3v5h-5"/>
+              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
+              <path d="M3 21v-5h5"/>
+            </svg>
+            Reset System
+          </button>
+          <button class="btn btn-secondary" onclick="exportData()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            Export CSV
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Traffic Distribution Chart -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Traffic Distribution</h3>
+      <span class="text-small text-muted" style="font-size:11px;" id="distBalanceLabel">— requests</span>
+    </div>
+    <div class="card-body">
+      <div class="chart-container">
+        <canvas id="distributionChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Server Status Table -->
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title">Server Status</h3>
+    <button class="btn btn-sm btn-secondary" onclick="refreshServers()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M3 21v-5h5"/>
+      </svg>
+      Refresh
+    </button>
+  </div>
+  <div class="card-body">
+    <div class="table-wrapper">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Server</th>
+            <th>Status</th>
+            <th>Requests</th>
+            <th>Active Conn.</th>
+            <th>Avg Response</th>
+            <th>Load %</th>
+          </tr>
+        </thead>
+        <tbody id="serverTableBody">
+          <tr>
+            <td colspan="6" class="text-center text-muted">Loading server data...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Response Time Scatter Plot -->
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title">Latency Scatter Plot</h3>
+    <span class="text-small text-muted" style="font-size:11px;">Each dot = one request · outliers visible instantly</span>
+  </div>
+  <div class="card-body">
+    <div class="chart-container">
+      <canvas id="responseTimeChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Live Traffic Terminal -->
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title">Live Traffic</h3>
+    <button class="btn btn-sm btn-secondary" onclick="clearTerminal()">
+      Clear
+    </button>
+  </div>
+  <div class="card-body" style="padding: 0;">
+    <div class="live-terminal">
+      <div class="terminal-header">
+        <div class="terminal-dots">
+          <span class="terminal-dot red"></span>
+          <span class="terminal-dot yellow"></span>
+          <span class="terminal-dot green"></span>
+        </div>
+        <span class="terminal-title">loadflow — traffic monitor</span>
+      </div>
+      <div class="terminal-body" id="terminalBody">
+        <div class="log-line log-muted">Waiting for traffic...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+    </div>
+  </main>
+
+  <!-- Global Toast Helper -->
+  <script>
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // AWS Status Badge
+    async function refreshAwsStatus() {
+      try {
+        const res = await fetch(API_BASE_URL + '/api/status');
+        const d = await res.json();
+        const badge = document.getElementById('awsStatusBadge');
+        const dot   = document.getElementById('awsStatusDot');
+        const txt   = document.getElementById('awsStatusText');
+        if (!badge) return;
+
+        if (d.aws_connected) {
+          dot.style.background = '#4ADE80';
+          dot.style.boxShadow  = '0 0 6px #4ADE80';
+          txt.textContent = 'AWS Live';
+          badge.style.background    = 'rgba(74,222,128,0.08)';
+          badge.style.border        = '1px solid rgba(74,222,128,0.25)';
+          badge.style.color         = '#4ADE80';
+          const region  = d.region  || '';
+          const account = d.account_id || '';
+          badge.title = `Connected to AWS\nRegion: ${region}${account ? '\nAccount: ' + account : ''}`;
+        } else if (!d.demo_mode) {
+          // Credentials set but STS failed
+          dot.style.background = '#F59E0B';
+          dot.style.boxShadow  = '0 0 6px #F59E0B';
+          txt.textContent = 'AWS (unverified)';
+          badge.style.background = 'rgba(245,158,11,0.08)';
+          badge.style.border     = '1px solid rgba(245,158,11,0.25)';
+          badge.style.color      = '#F59E0B';
+          badge.title = `Credentials configured but STS could not verify.\nRegion: ${d.region || ''}`;
+        } else {
+          dot.style.background = '#64748B';
+          dot.style.boxShadow  = 'none';
+          txt.textContent = 'Demo Mode';
+          badge.style.background = 'rgba(255,255,255,0.04)';
+          badge.style.border     = '1px solid rgba(255,255,255,0.08)';
+          badge.style.color      = '#94A3B8';
+          badge.title = 'Running in demo mode — no real AWS calls.';
+        }
+      } catch(e) {
+        const txt = document.getElementById('awsStatusText');
+        if (txt) txt.textContent = 'Status unknown';
+      }
+    }
+    document.addEventListener('DOMContentLoaded', refreshAwsStatus);
+  </script>
+
+  
+<script>
+  let distributionChart, responseTimeChart;
+  let servers = [];
+  let updateInterval;
+
+  // Initialize charts
+  function initCharts() {
+    // --- Donut: Live % Distribution ---
+    const distCtx = document.getElementById('distributionChart').getContext('2d');
+    distributionChart = new Chart(distCtx, {
+      type: 'doughnut',
+      data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderWidth: 3, borderColor: '#0B1120', hoverOffset: 8 }] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '68%',
+        animation: { animateRotate: true, duration: 600 },
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { padding: 14, font: { family: 'Inter', size: 11 }, color: '#94A3B8',
+              generateLabels(chart) {
+                const ds = chart.data.datasets[0];
+                return chart.data.labels.map((label, i) => ({
+                  text: `${label}  ${ds.data[i] != null ? ds.data[i] + '%' : ''}`,
+                  fillStyle: ds.backgroundColor[i],
+                  strokeStyle: ds.backgroundColor[i],
+                  hidden: false, index: i
+                }));
+              }
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(11,17,32,0.95)',
+            titleFont: { family: 'Inter' }, bodyFont: { family: 'Inter' }, padding: 10,
+            callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed}%  (${_rawCounts[ctx.dataIndex] || 0} req)` }
+          }
+        }
+      }
+    });
+
+    // --- Scatter Plot: per-request latency dots ---
+    const respCtx = document.getElementById('responseTimeChart').getContext('2d');
+    responseTimeChart = new Chart(respCtx, {
+      type: 'scatter',
+      data: { datasets: [] },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'point', intersect: true },
+        plugins: {
+          legend: { position: 'bottom', labels: { padding: 12, font: { family: 'Inter', size: 11 }, color: '#94A3B8' } },
+          tooltip: {
+            backgroundColor: 'rgba(11,17,32,0.95)',
+            titleFont: { family: 'Inter' }, bodyFont: { family: 'Inter' }, padding: 10,
+            callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}ms` }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: { display: true, text: 'Response Time (ms)', color: '#64748B', font: { family: 'Inter', size: 11 } },
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: { font: { family: 'Inter' }, color: '#64748B' }
+          },
+          x: {
+            title: { display: true, text: 'Request #', color: '#64748B', font: { family: 'Inter', size: 11 } },
+            grid: { display: false },
+            ticks: { font: { family: 'Inter' }, color: '#64748B', precision: 0 }
+          }
+        }
+      }
+    });
+  }
+
+  // Fetch and update server data
+  async function fetchServers() {
+    try {
+      const res = await fetch(API_BASE_URL + '/api/servers');
+      const data = await res.json();
+      servers = data.servers || [];
+      updateDashboard();
+    } catch (error) {
+      console.error('Error fetching servers:', error);
+    }
+  }
+
+  // Fetch stats and update stat cards
+  async function fetchStats() {
+    try {
+      const res = await fetch(API_BASE_URL + '/api/stats');
+      const data = await res.json();
+      document.getElementById('totalRequests').textContent = data.total_requests || 0;
+      document.getElementById('avgResponseTime').textContent = Math.round(data.avg_response_time || 0) + 'ms';
+      document.getElementById('activeServers').textContent = data.active_servers || 0;
+      document.getElementById('currentAlgorithm').textContent = data.algorithm_display || 'Round Robin';
+      
+      const serverStatusElement = document.getElementById('serverStatus');
+      if (serverStatusElement) {
+        const total = data.total_servers || servers.length || 0;
+        serverStatusElement.textContent = `${data.active_servers}/${total} online`;
+      }
+      
+      // Sync auto-traffic button with backend state
+      const btn = document.getElementById('autoTrafficBtn');
+      if (btn) {
+        const backendRunning = data.traffic_running === true;
+        const btnRunning = btn.innerHTML.includes('Stop');
+        if (backendRunning && !btnRunning) {
+          btn.innerHTML = 'Stop Auto ⚡';
+          btn.style.background = 'rgba(74, 222, 128, 0.1)';
+          if (!autoTrafficInterval) autoTrafficInterval = setInterval(fetchStats, 1000);
+        } else if (!backendRunning && btnRunning) {
+          btn.innerHTML = 'Start Auto ⚡';
+          btn.style.background = 'transparent';
+          if (autoTrafficInterval) { clearInterval(autoTrafficInterval); autoTrafficInterval = null; }
+        }
+      }
+
+      // Feed scatter plot from latest history when traffic is running
+      if (data.traffic_running) {
+        try {
+          const hRes = await fetch(API_BASE_URL + '/api/history?page=1&per_page=10');
+          const hData = await hRes.json();
+          const items = hData.data || [];
+          if (items.length > 0) {
+            items.forEach(r => addTerminalLog(r));
+            injectScatterPoints(items);
+          }
+        } catch(_) {}
+      }
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  }
+
+  // Scatter chart global request counter
+  let _scatterReqIndex = 0;
+  let _rawCounts = []; // raw request counts for donut tooltip
+
+  // Per-server colour palette
+  const _SERVER_COLORS = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#F97316'];
+
+  // Update dashboard with server data
+  function updateDashboard() {
+    updateDonut();
+    updateServerTable();
+  }
+
+  // ---- Live Percentage Donut ----
+  function updateDonut() {
+    if (!servers || servers.length === 0) return;
+
+    const total = servers.reduce((sum, s) => sum + (s.requests_handled || 0), 0);
+    _rawCounts = servers.map(s => s.requests_handled || 0);
+
+    const labels  = servers.map(s => s.name || s.id);
+    const percentages = total > 0
+      ? servers.map(s => Math.round((s.requests_handled || 0) / total * 100))
+      : servers.map(() => Math.round(100 / servers.length)); // equal split placeholder
+    const colors = servers.map((_, i) => _SERVER_COLORS[i % _SERVER_COLORS.length]);
+
+    distributionChart.data.labels = labels;
+    distributionChart.data.datasets[0].data = percentages;
+    distributionChart.data.datasets[0].backgroundColor = colors;
+    distributionChart.update();
+
+    // Update balance label
+    const lbl = document.getElementById('distBalanceLabel');
+    if (lbl) {
+      if (total === 0) {
+        lbl.textContent = 'No traffic yet';
+      } else {
+        // Coefficient of variation — lower = more balanced
+        const mean = percentages.reduce((a, b) => a + b, 0) / percentages.length;
+        const variance = percentages.reduce((s, v) => s + Math.pow(v - mean, 2), 0) / percentages.length;
+        const cv = mean > 0 ? Math.sqrt(variance) / mean : 0;
+        const score = Math.round((1 - Math.min(cv, 1)) * 100);
+        lbl.textContent = `${total} req · Balance ${score}%`;
+      }
+    }
+  }
+
+  // ---- Scatter Plot (inject new points from latest history) ----
+  function injectScatterPoints(historyItems) {
+    if (!historyItems || historyItems.length === 0) return;
+
+    // Build server → colour map
+    const serverNames = [...new Set(servers.map(s => s.name || s.id))];
+
+    // Ensure one dataset per server exists
+    const existingLabels = responseTimeChart.data.datasets.map(d => d.label);
+    serverNames.forEach((name, i) => {
+      if (!existingLabels.includes(name)) {
+        responseTimeChart.data.datasets.push({
+          label: name,
+          data: [],
+          backgroundColor: _SERVER_COLORS[i % _SERVER_COLORS.length] + 'CC',
+          borderColor:     _SERVER_COLORS[i % _SERVER_COLORS.length],
+          pointRadius: 4,
+          pointHoverRadius: 6
+        });
+      }
+    });
+
+    // Add new scatter points
+    historyItems.forEach(req => {
+      _scatterReqIndex++;
+      const dsIdx = responseTimeChart.data.datasets.findIndex(d => d.label === req.server_name);
+      const target = dsIdx >= 0
+        ? responseTimeChart.data.datasets[dsIdx]
+        : responseTimeChart.data.datasets[0];
+      if (target) target.data.push({ x: _scatterReqIndex, y: req.response_time || 0 });
+    });
+
+    // Cap total points per dataset at 200
+    responseTimeChart.data.datasets.forEach(ds => {
+      if (ds.data.length > 200) ds.data.splice(0, ds.data.length - 200);
+    });
+
+    responseTimeChart.update('none');
+  }
+
+  // Update server table
+  function updateServerTable() {
+    const tbody = document.getElementById('serverTableBody');
+    
+    if (servers.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No servers available</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = servers.map(s => `
+      <tr>
+        <td>
+          <strong>${s.name || s.id}</strong>
+          <div class="text-small text-muted">${s.ip || 'N/A'}</div>
+        </td>
+        <td>
+          <span class="server-status ${s.health === 'healthy' ? 'online' : 'offline'}">
+            ${s.status || 'unknown'}
+          </span>
+        </td>
+        <td>${s.requests_handled || 0}</td>
+        <td>${s.connections || 0}</td>
+        <td>${Math.round(s.response_time || 0)}ms</td>
+        <td>
+          <div class="progress">
+            <div class="progress-bar" style="width: ${Math.min(s.cpu_percent || 0, 100)}%"></div>
+          </div>
+          <div class="text-small text-muted mt-1">${Math.round(s.cpu_percent || 0)}%</div>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  // Send single request
+  async function sendSingleRequest() {
+    try {
+      const res = await fetch(API_BASE_URL + '/api/send-request', { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        addTerminalLog(data);
+        injectScatterPoints([data]);
+        await fetchServers();
+      }
+    } catch (error) {
+      console.error('Error sending request:', error);
+    }
+  }
+
+  // Send multiple requests
+  async function sendMultiple(count) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> Sending...';
+    
+    try {
+      const res = await fetch(`/api/auto-send/${count}`, { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.results && Array.isArray(data.results)) {
+          data.results.forEach(r => addTerminalLog(r));
+          injectScatterPoints(data.results);
+        }
+        await fetchServers();
+      }
+    } catch (error) {
+      console.error('Error sending requests:', error);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `Send ${count}`;
+    }
+  }
+
+  let autoTrafficInterval = null;
+  async function toggleAutoTraffic() {
+    const btn = document.getElementById('autoTrafficBtn');
+    try {
+        const res = await fetch(API_BASE_URL + '/api/toggle-traffic', { method: 'POST' });
+        const data = await res.json();
+        if (data.running) {
+            btn.innerHTML = 'Stop Auto ⚡';
+            btn.style.background = 'rgba(74, 222, 128, 0.1)';
+            showToast('Auto-traffic started (backend thread)', 'success');
+            // Poll for logs while it's running so dashboard stays active
+            // Servers/History pages will use the backend DB implicitly.
+            autoTrafficInterval = setInterval(() => {
+                fetchStats();
+            }, 1000);
+        } else {
+            btn.innerHTML = 'Start Auto ⚡';
+            btn.style.background = 'transparent';
+            showToast('Auto-traffic stopped', 'info');
+            if (autoTrafficInterval) clearInterval(autoTrafficInterval);
+        }
+    } catch (e) {
+        console.error('Failed to toggle traffic', e);
+    }
+  }
+
+  // Change algorithm
+  async function setAlgorithm(algo) {
+    try {
+      await fetch(API_BASE_URL + '/api/set-algorithm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ algorithm: algo })
+      });
+      document.getElementById('currentAlgorithm').textContent = 
+        algo.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+      
+      // Update segmented control active state
+      document.querySelectorAll('.seg-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById('btn-' + algo).classList.add('active');
+    } catch (error) {
+      console.error('Error setting algorithm:', error);
+    }
+  }
+
+  // Reset system
+  async function resetSystem() {
+    if (!confirm('Are you sure you want to reset the system? This will clear all statistics.')) {
+      return;
+    }
+    
+    try {
+      const res = await fetch(API_BASE_URL + '/api/reset', { method: 'POST' });
+      const data = await res.json();
+      // Backend also stops traffic — sync button
+      if (data.traffic_stopped) {
+        const btn = document.getElementById('autoTrafficBtn');
+        btn.innerHTML = 'Start Auto ⚡';
+        btn.style.background = 'transparent';
+        if (autoTrafficInterval) { clearInterval(autoTrafficInterval); autoTrafficInterval = null; }
+      }
+      // Clear scatter plot
+      _scatterReqIndex = 0;
+      responseTimeChart.data.datasets = [];
+      responseTimeChart.update('none');
+      await fetchServers();
+    } catch (error) {
+      console.error('Error resetting system:', error);
+    }
+  }
+
+  // Export data
+  function exportData() {
+    window.location.href = API_BASE_URL + '/api/export-csv';
+  }
+
+  // Refresh servers
+  function refreshServers() {
+    fetchServers();
+  }
+
+  // Initialize
+  document.addEventListener('DOMContentLoaded', () => {
+    initCharts();
+    fetchServers();
+    fetchStats();
+    
+    // Check global traffic status on load
+    fetch(API_BASE_URL + '/api/traffic-status').then(r=>r.json()).then(data => {
+        if (data.running) {
+            const btn = document.getElementById('autoTrafficBtn');
+            btn.innerHTML = 'Stop Auto ⚡';
+            btn.style.background = 'rgba(74, 222, 128, 0.1)';
+            autoTrafficInterval = setInterval(() => { fetchStats(); }, 1000);
+        }
+    }).catch(e => console.error(e));
+    
+    // Auto-refresh every 3 seconds
+    updateInterval = setInterval(() => {
+      fetchServers();
+      fetchStats();
+    }, 3000);
+  });
+
+  // Cleanup on page unload
+  window.addEventListener('beforeunload', () => {
+    if (updateInterval) clearInterval(updateInterval);
+  });
+
+  // Terminal functions
+  function addTerminalLog(reqData) {
+    const terminal = document.getElementById('terminalBody');
+    if (!terminal) return;
+
+    // Remove the "Waiting..." placeholder
+    const placeholder = terminal.querySelector('.log-muted');
+    if (placeholder && placeholder.textContent.includes('Waiting')) {
+      placeholder.remove();
+    }
+
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const status = reqData.status || 'healthy';
+    const statusClass = (status === 'healthy' || status === 'success' || status === 'running') ? 'log-success' : 'log-error';
+    const statusLabel = (status === 'healthy' || status === 'success' || status === 'running') ? 'OK' : 'FAIL';
+    const serverName = reqData.server_name || 'unknown';
+    const rt = reqData.response_time || 0;
+    const algo = (reqData.algorithm || 'round_robin').replace(/_/g, ' ');
+    const reqId = reqData.id || reqData.request_id || '—';
+
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.innerHTML = `<span class="log-muted">${time}</span>  <span class="${statusClass}">[${statusLabel}]</span>  <span class="log-info">Req #${reqId}</span> → ${serverName} <span class="log-muted">via ${algo}</span>  <span class="${rt < 150 ? 'log-success' : 'log-warning'}">${rt}ms</span>`;
+    terminal.appendChild(line);
+
+    // Keep max 100 lines
+    while (terminal.children.length > 100) {
+      terminal.removeChild(terminal.firstChild);
+    }
+
+    // Auto-scroll
+    terminal.scrollTop = terminal.scrollHeight;
+  }
+
+  function clearTerminal() {
+    const terminal = document.getElementById('terminalBody');
+    if (terminal) {
+      terminal.innerHTML = '<div class="log-line log-muted">Terminal cleared. Waiting for traffic...</div>';
+    }
+  }
+</script>
+
+</body>
+</html>

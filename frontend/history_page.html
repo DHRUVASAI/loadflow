@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Request History — Load Balancer Simulator</title>
+  <meta name="description" content="LoadFlow is an interactive load balancer simulator. Monitor, compare, and scale your virtual server infrastructure in real-time.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="./css/style.css">
+  
+  
+
+<script>
+  // Point this to your Render.com backend URL once deployed
+  // e.g. "https://loadflow-api.onrender.com"
+  const API_BASE_URL = "https://loadflow.onrender.com"; 
+</script>
+</head>
+
+<body>
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+  
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <a href="landing.html" class="navbar-brand">
+        <!-- LoadFlow logo: abstract routing / flow paths -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+        LoadFlow
+      </a>
+      <ul class="navbar-nav">
+        <li>
+          <a href="index.html" class="nav-link ">
+            Dashboard
+          </a>
+        </li>
+        <li>
+          <a href="servers_page.html" class="nav-link ">
+            Servers
+          </a>
+        </li>
+        <li>
+          <a href="compare_page.html" class="nav-link ">
+            Compare
+          </a>
+        </li>
+        <li>
+          <a href="history.html" class="nav-link ">
+            History
+          </a>
+        </li>
+      </ul>
+      <!-- AWS Connection Badge -->
+      <div id="awsStatusBadge" style="
+        display: inline-flex; align-items: center; gap: 7px;
+        padding: 5px 13px; border-radius: 100px; font-size: 12px; font-weight: 600;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.04);
+        color: #94A3B8; cursor: default;
+        transition: all 0.3s; position: relative;
+      " title="Checking AWS status...">
+        <span id="awsStatusDot" style="width:7px;height:7px;border-radius:50%;background:#64748B;flex-shrink:0;"></span>
+        <span id="awsStatusText">Connecting…</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Flash Messages -->
+  
+    
+  
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="container">
+      
+<!-- Page Header -->
+<div class="page-header flex-between">
+  <div>
+    <h1 class="page-title">Request History</h1>
+    <p class="page-subtitle">Complete log of all processed requests</p>
+  </div>
+  <div class="btn-group">
+    <button class="btn btn-secondary" onclick="refreshHistory()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M3 21v-5h5"/>
+      </svg>
+      Refresh
+    </button>
+    <button class="btn btn-primary" onclick="exportHistory()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Export CSV
+    </button>
+    <button class="btn btn-danger" onclick="clearHistory()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="3 6 5 6 21 6"/>
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+      </svg>
+      Clear History
+    </button>
+  </div>
+</div>
+
+<!-- History Stats -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-label">Total Requests</div>
+    <div class="stat-value" id="totalRequests">0</div>
+    <div class="stat-change neutral">All time</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Success Rate</div>
+    <div class="stat-value" id="successRate">0%</div>
+    <div class="stat-change positive" id="successCount">0 successful</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Avg Response Time</div>
+    <div class="stat-value" id="avgResponse">0ms</div>
+    <div class="stat-change neutral" id="responseRange">-</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Active Algorithm</div>
+    <div class="stat-value" style="font-size: 20px;" id="currentAlgorithm">Round Robin</div>
+    <div class="stat-change neutral">Current</div>
+  </div>
+</div>
+
+<!-- Timeline Chart -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Request Timeline</h3>
+    <div class="btn-group">
+      <button class="btn btn-sm btn-secondary" onclick="setTimeRange('all')">All</button>
+      <button class="btn btn-sm btn-secondary" onclick="setTimeRange('hour')">1H</button>
+      <button class="btn btn-sm btn-secondary" onclick="setTimeRange('day')">24H</button>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="chart-container">
+      <canvas id="timelineChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title">Filters</h3>
+  </div>
+  <div class="card-body" style="padding: 20px 24px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+      <div class="form-group" style="margin-bottom: 0;">
+        <label class="form-label">Server</label>
+        <select id="filterServer" class="form-control form-select" onchange="applyFilters()">
+          <option value="">All Servers</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom: 0;">
+        <label class="form-label">Algorithm</label>
+        <select id="filterAlgorithm" class="form-control form-select" onchange="applyFilters()">
+          <option value="">All Algorithms</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom: 0;">
+        <label class="form-label">Status</label>
+        <select id="filterStatus" class="form-control form-select" onchange="applyFilters()">
+          <option value="">All Status</option>
+          <option value="success">Success</option>
+          <option value="failed">Failed</option>
+        </select>
+      </div>
+      <div class="form-group" style="margin-bottom: 0;">
+        <label class="form-label">Search</label>
+        <input type="text" id="searchInput" class="form-control" placeholder="Search by ID..." onkeyup="applyFilters()">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- History Table -->
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title">Request Log</h3>
+    <div class="text-small text-muted">
+      Showing <span id="visibleCount">0</span> of <span id="totalCount">0</span> requests
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="table-wrapper">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Request ID</th>
+            <th>Timestamp</th>
+            <th>Server</th>
+            <th>Algorithm</th>
+            <th>Response Time</th>
+            <th>Status</th>
+            <th>Client IP</th>
+          </tr>
+        </thead>
+        <tbody id="historyTableBody">
+          <tr>
+            <td colspan="7" class="text-center text-muted">Loading request history...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    
+    <!-- Pagination Controls -->
+    <div class="pagination flex-between mt-3" style="align-items: center; padding: 10px 0;">
+      <div class="text-small text-muted">
+        Page <span id="currentPageDisplay">1</span> of <span id="totalPagesDisplay">1</span>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-sm btn-secondary" id="btnPrev" onclick="changePage(-1)">Previous</button>
+        <button class="btn btn-sm btn-secondary" id="btnNext" onclick="changePage(1)">Next</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Custom Clear Confirmation Modal -->
+<div class="modal-overlay" id="clearConfirmModal" onclick="if(event.target===this)closeClearModal()">
+  <div class="modal-content" style="max-width:420px;">
+    <div class="modal-header">
+      <div class="modal-title" style="color:#EF4444;">⚠ Clear All History?</div>
+      <button class="modal-close" onclick="closeClearModal()">×</button>
+    </div>
+    <p style="color:#94A3B8;font-size:14px;line-height:1.6;padding:0 0 20px;">This will permanently delete all request logs and reset server counters. Auto-traffic will also be stopped.</p>
+    <div class="btn-group" style="width:100%;">
+      <button class="btn btn-secondary" style="flex:1;" onclick="closeClearModal()">Cancel</button>
+      <button class="btn btn-danger" style="flex:1;" id="confirmClearBtn" onclick="executeClear()">Confirm Clear</button>
+    </div>
+  </div>
+</div>
+
+    </div>
+  </main>
+
+  <!-- Global Toast Helper -->
+  <script>
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // AWS Status Badge
+    async function refreshAwsStatus() {
+      try {
+        const res = await fetch(API_BASE_URL + '/api/status');
+        const d = await res.json();
+        const badge = document.getElementById('awsStatusBadge');
+        const dot   = document.getElementById('awsStatusDot');
+        const txt   = document.getElementById('awsStatusText');
+        if (!badge) return;
+
+        if (d.aws_connected) {
+          dot.style.background = '#4ADE80';
+          dot.style.boxShadow  = '0 0 6px #4ADE80';
+          txt.textContent = 'AWS Live';
+          badge.style.background    = 'rgba(74,222,128,0.08)';
+          badge.style.border        = '1px solid rgba(74,222,128,0.25)';
+          badge.style.color         = '#4ADE80';
+          const region  = d.region  || '';
+          const account = d.account_id || '';
+          badge.title = `Connected to AWS\nRegion: ${region}${account ? '\nAccount: ' + account : ''}`;
+        } else if (!d.demo_mode) {
+          // Credentials set but STS failed
+          dot.style.background = '#F59E0B';
+          dot.style.boxShadow  = '0 0 6px #F59E0B';
+          txt.textContent = 'AWS (unverified)';
+          badge.style.background = 'rgba(245,158,11,0.08)';
+          badge.style.border     = '1px solid rgba(245,158,11,0.25)';
+          badge.style.color      = '#F59E0B';
+          badge.title = `Credentials configured but STS could not verify.\nRegion: ${d.region || ''}`;
+        } else {
+          dot.style.background = '#64748B';
+          dot.style.boxShadow  = 'none';
+          txt.textContent = 'Demo Mode';
+          badge.style.background = 'rgba(255,255,255,0.04)';
+          badge.style.border     = '1px solid rgba(255,255,255,0.08)';
+          badge.style.color      = '#94A3B8';
+          badge.title = 'Running in demo mode — no real AWS calls.';
+        }
+      } catch(e) {
+        const txt = document.getElementById('awsStatusText');
+        if (txt) txt.textContent = 'Status unknown';
+      }
+    }
+    document.addEventListener('DOMContentLoaded', refreshAwsStatus);
+  </script>
+
+  
+<script>
+  let timelineChart;
+  let allHistory = [];
+  let filteredHistory = [];
+  let timeRange = 'all';
+  let currentPage = 1;
+  let totalPages = 1;
+  let totalSystemReqs = 0;
+
+  // Initialize chart
+  function initChart() {
+    const ctx = document.getElementById('timelineChart').getContext('2d');
+    timelineChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Requests',
+          data: [],
+          borderColor: '#3B82F6',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          tension: 0.4,
+          fill: true,
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(23, 43, 77, 0.95)',
+            titleFont: { family: 'Inter' },
+            bodyFont: { family: 'Inter' },
+            padding: 10
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(255, 255, 255, 0.06)' },
+            ticks: {
+              font: { family: 'Inter' },
+              color: '#64748B',
+              precision: 0
+            }
+          },
+          x: {
+            grid: { display: false },
+            ticks: {
+              font: { family: 'Inter' },
+              color: '#64748B',
+              maxRotation: 0
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Fetch history data
+  async function fetchHistory() {
+    try {
+      const res = await fetch(`/api/history?page=${currentPage}&per_page=20`);
+      const data = await res.json();
+      allHistory = data.data || [];
+      filteredHistory = [...allHistory];
+      totalPages = data.pages || 1;
+      totalSystemReqs = data.total || 0;
+      currentPage = data.page || 1;
+      
+      updateDashboard();
+      
+      // Update pagination buttons state
+      const btnPrev = document.getElementById('btnPrev');
+      const btnNext = document.getElementById('btnNext');
+      if (btnPrev) btnPrev.disabled = (currentPage <= 1);
+      if (btnNext) btnNext.disabled = (currentPage >= totalPages);
+      
+      const curDisplay = document.getElementById('currentPageDisplay');
+      const totDisplay = document.getElementById('totalPagesDisplay');
+      if (curDisplay) curDisplay.textContent = currentPage;
+      if (totDisplay) totDisplay.textContent = totalPages;
+      
+      populateFilters();
+    } catch (error) {
+      console.error('Error fetching history:', error);
+      document.getElementById('historyTableBody').innerHTML = `
+        <tr>
+          <td colspan="7">
+            <div class="alert alert-error">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              Failed to load request history
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+  }
+
+  // Update dashboard
+  function updateDashboard() {
+    if (allHistory.length === 0) {
+      showEmptyState();
+      return;
+    }
+
+    updateStats();
+    updateChart();
+    updateTable();
+  }
+
+  // Update stats
+  function updateStats() {
+    const successCount = allHistory.filter(h =>
+      h.status === 'healthy' || h.status === 'success' || h.status === 'running' || h.status === 'warning'
+    ).length;
+    const successRate = allHistory.length > 0 ? Math.round((successCount / allHistory.length) * 100) : 0;
+    const avgResponse = allHistory.length > 0
+      ? Math.round(allHistory.reduce((sum, h) => sum + (h.response_time || 0), 0) / allHistory.length)
+      : 0;
+
+    const responseTimes = allHistory.map(h => h.response_time || 0).filter(t => t > 0);
+    const minResponse = responseTimes.length > 0 ? Math.min(...responseTimes) : 0;
+    const maxResponse = responseTimes.length > 0 ? Math.max(...responseTimes) : 0;
+
+    document.getElementById('totalRequests').textContent = totalSystemReqs;
+    document.getElementById('successRate').textContent = successRate + '%';
+    document.getElementById('successCount').textContent = `${successCount} successful`;
+    document.getElementById('avgResponse').textContent = avgResponse + 'ms';
+    document.getElementById('responseRange').textContent = `${minResponse}ms – ${maxResponse}ms`;
+
+    // Get current algorithm from latest request — algos use underscores
+    if (allHistory.length > 0) {
+      const latestAlgo = allHistory[0].algorithm || 'round_robin';
+      document.getElementById('currentAlgorithm').textContent = formatAlgorithmName(latestAlgo);
+    }
+  }
+
+  // Update chart
+  function updateChart() {
+    if (!allHistory || allHistory.length === 0) {
+      if (timelineChart) {
+          timelineChart.data.labels = [];
+          timelineChart.data.datasets[0].data = [];
+          timelineChart.update();
+      }
+      return;
+    }
+
+    // Since a page only holds 20 requests (which could all happen in the exact same second), 
+    // bucketing them by time leads to a single dot. 
+    // Instead, we sequentially plot the Response Time for each request!
+    const historySlice = [...allHistory].reverse(); // reverse so oldest is on the left
+
+    const labels = historySlice.map(req => 
+      `${new Date(req.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })} (#${req.id})`
+    );
+    const data = historySlice.map(req => req.response_time || 0);
+
+    timelineChart.data.datasets[0].label = 'Response Time (ms)';
+    timelineChart.data.labels = labels;
+    timelineChart.data.datasets[0].data = data;
+    timelineChart.update();
+  }
+
+  // Helper: map backend health status → badge class
+  function statusBadgeClass(status) {
+    switch ((status || '').toLowerCase()) {
+      case 'healthy':  case 'success': case 'running': return 'badge-success';
+      case 'warning':  return 'badge-warning';
+      case 'critical': case 'failed':  case 'error':   return 'badge-error';
+      default:         return 'badge-warning';
+    }
+  }
+
+  // Update table
+  function updateTable() {
+    const tbody = document.getElementById('historyTableBody');
+    document.getElementById('totalCount').textContent = totalSystemReqs;
+    document.getElementById('visibleCount').textContent = filteredHistory.length;
+
+    if (filteredHistory.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No requests match the current filters</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = filteredHistory.map(req => `
+      <tr>
+        <td>
+          <code class="text-mono text-small">${req.id || 'N/A'}</code>
+        </td>
+        <td class="text-small">
+          ${formatTimestamp(req.timestamp)}
+        </td>
+        <td>
+          <strong>${req.server_name || 'Unknown'}</strong>
+          <div class="text-small text-muted">${req.server_id || ''}</div>
+        </td>
+        <td class="text-small">
+          ${formatAlgorithmName(req.algorithm || 'unknown')}
+        </td>
+        <td>
+          <span class="badge ${req.response_time < 100 ? 'badge-success' : req.response_time < 200 ? 'badge-warning' : 'badge-error'}">
+            ${req.response_time || 0}ms
+          </span>
+        </td>
+        <td>
+          <span class="badge ${statusBadgeClass(req.status)}">
+            ${req.status || 'unknown'}
+          </span>
+        </td>
+        <td class="text-small text-muted">
+          ${req.client_ip || '–'}
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  // Populate filter dropdowns
+  function populateFilters() {
+    const servers = [...new Set(allHistory.map(h => h.server_name))].filter(Boolean);
+    const algorithms = [...new Set(allHistory.map(h => h.algorithm))].filter(Boolean);
+
+    const serverSelect = document.getElementById('filterServer');
+    serverSelect.innerHTML = '<option value="">All Servers</option>' + 
+      servers.map(s => `<option value="${s}">${s}</option>`).join('');
+
+    const algoSelect = document.getElementById('filterAlgorithm');
+    algoSelect.innerHTML = '<option value="">All Algorithms</option>' + 
+      algorithms.map(a => `<option value="${a}">${formatAlgorithmName(a)}</option>`).join('');
+  }
+
+  // Apply filters
+  function applyFilters() {
+    const serverFilter = document.getElementById('filterServer').value;
+    const algoFilter = document.getElementById('filterAlgorithm').value;
+    const statusFilter = document.getElementById('filterStatus').value;
+    const searchText = document.getElementById('searchInput').value.toLowerCase();
+
+    filteredHistory = allHistory.filter(req => {
+      if (serverFilter && req.server_name !== serverFilter) return false;
+      if (algoFilter && req.algorithm !== algoFilter) return false;
+      if (statusFilter && req.status !== statusFilter) return false;
+      if (searchText && !String(req.id).toLowerCase().includes(searchText)) return false;
+      return true;
+    });
+
+    updateTable();
+  }
+
+  // Change page
+  function changePage(delta) {
+    const newPage = currentPage + delta;
+    if (newPage >= 1 && newPage <= totalPages) {
+      currentPage = newPage;
+      fetchHistory();
+    }
+  }
+
+  // Set time range
+  function setTimeRange(range) {
+    timeRange = range;
+    updateChart();
+  }
+
+  // Show empty state
+  function showEmptyState() {
+    document.getElementById('totalRequests').textContent = '0';
+    document.getElementById('successRate').textContent = '0%';
+    document.getElementById('successCount').textContent = '0 successful';
+    document.getElementById('avgResponse').textContent = '0ms';
+    document.getElementById('responseRange').textContent = '-';
+
+    document.getElementById('historyTableBody').innerHTML = `
+      <tr>
+        <td colspan="7" class="text-center">
+          <div style="padding: 40px 20px;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#8993a4" stroke-width="1.5" style="margin: 0 auto 16px; display: block;">
+              <circle cx="12" cy="12" r="10"/>
+              <polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <p class="text-muted">No request history yet</p>
+            <p class="text-small text-muted">Requests will appear here as they are processed</p>
+          </div>
+        </td>
+      </tr>
+    `;
+  }
+
+  // Helper functions
+  function formatTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    return date.toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  }
+
+  function formatAlgorithmName(algo) {
+    // Backend algos use underscores: round_robin, least_connections, weighted
+    return (algo || 'unknown').split(/[_-]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+
+  function refreshHistory() {
+    fetchHistory();
+  }
+
+  function exportHistory() {
+    window.location.href = API_BASE_URL + '/api/export-csv';
+  }
+
+  // Show custom modal instead of window.confirm()
+  function clearHistory() {
+    const modal = document.getElementById('clearConfirmModal');
+    if (modal) modal.classList.add('active');
+  }
+
+  function closeClearModal() {
+    const modal = document.getElementById('clearConfirmModal');
+    if (modal) modal.classList.remove('active');
+  }
+
+  async function executeClear() {
+    const btn = document.getElementById('confirmClearBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading"></span> Clearing...';
+    try {
+      const res = await fetch(API_BASE_URL + '/api/clear-history', { method: 'POST' });
+      const data = await res.json();
+      closeClearModal();
+      if (data.traffic_stopped) {
+        showToast('History cleared. Auto-traffic stopped.', 'info');
+      } else {
+        showToast('History cleared.', 'success');
+      }
+      // Reset pagination to page 1 before re-fetching
+      currentPage = 1;
+      await fetchHistory();
+    } catch (error) {
+      console.error('Error clearing history:', error);
+      closeClearModal();
+      showToast('Failed to clear history', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = 'Confirm Clear';
+    }
+  }
+
+  // Initialize
+  document.addEventListener('DOMContentLoaded', () => {
+    initChart();
+    fetchHistory();
+    
+    // Auto-refresh every 5 seconds
+    setInterval(fetchHistory, 5000);
+  });
+</script>
+
+</body>
+</html>

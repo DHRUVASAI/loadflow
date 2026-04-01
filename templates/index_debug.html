@@ -1,0 +1,425 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title">Dashboard</h1>
+    <p class="page-subtitle">Monitor load balancer performance and server metrics</p>
+  </div>
+  <div class="page-actions">
+    <button class="btn-secondary" onclick="refreshServers()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="23 4 23 10 17 10"/>
+        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+      </svg>
+      Refresh
+    </button>
+    <button class="btn-secondary" onclick="exportData()">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Export
+    </button>
+  </div>
+</div>
+
+<!-- DEBUG INFO -->
+<div class="alert alert-info mb-3">
+  <strong>🐛 DEBUG MODE:</strong> Check browser console (F12 → Console) for detailed logs.
+  Status: <span id="debugStatus" style="font-weight: bold; color: #f59e0b;">Initializing...</span>
+</div>
+
+<!-- Stats Cards -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-icon" style="background: rgba(0, 81, 195, 0.1);">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#0051c3" stroke-width="2">
+        <rect x="2" y="3" width="20" height="14" rx="2"/>
+        <line x1="8" y1="21" x2="16" y2="21"/>
+        <line x1="12" y1="17" x2="12" y2="21"/>
+      </svg>
+    </div>
+    <div class="stat-content">
+      <div class="stat-label">Total Requests</div>
+      <div class="stat-value" id="totalRequests">0</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon" style="background: rgba(34, 197, 94, 0.1);">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2">
+        <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+      </svg>
+    </div>
+    <div class="stat-content">
+      <div class="stat-label">Active Servers</div>
+      <div class="stat-value" id="activeServers">0</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon" style="background: rgba(245, 158, 11, 0.1);">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2">
+        <circle cx="12" cy="12" r="10"/>
+        <polyline points="12 6 12 12 16 14"/>
+      </svg>
+    </div>
+    <div class="stat-content">
+      <div class="stat-label">Avg Response Time</div>
+      <div class="stat-value" id="avgResponse">0ms</div>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-icon" style="background: rgba(139, 92, 246, 0.1);">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+        <line x1="12" y1="22.08" x2="12" y2="12"/>
+      </svg>
+    </div>
+    <div class="stat-content">
+      <div class="stat-label">Current Algorithm</div>
+      <div class="stat-value" id="currentAlgorithm" style="font-size: 18px;">Round Robin</div>
+    </div>
+  </div>
+</div>
+
+<!-- Control Panel -->
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title">Control Panel</h3>
+  </div>
+  <div class="card-body">
+    <div class="control-panel">
+      <div class="form-group">
+        <label class="form-label">Load Balancing Algorithm</label>
+        <select id="algorithmSelect" class="form-select" onchange="changeAlgorithm()">
+          <option value="round_robin">Round Robin</option>
+          <option value="least_connections">Least Connections</option>
+          <option value="weighted_round_robin">Weighted Round Robin</option>
+          <option value="ip_hash">IP Hash</option>
+        </select>
+      </div>
+
+      <div class="button-group">
+        <button class="btn-primary" onclick="sendSingleRequest()">
+          Send Single Request
+        </button>
+        <button class="btn-primary" onclick="sendMultiple()">
+          Send 100 Requests
+        </button>
+        <button class="btn-danger" onclick="resetSystem()">
+          Reset System
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row mt-3">
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Request Distribution</h3>
+      </div>
+      <div class="card-body">
+        <div class="chart-container">
+          <canvas id="distributionChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card">
+      <div class="card-header">
+        <h3 class="card-title">Server Status</h3>
+      </div>
+      <div class="card-body">
+        <table class="table" id="serversTable">
+          <thead>
+            <tr>
+              <th>Server</th>
+              <th>Status</th>
+              <th>Requests</th>
+              <th>Response Time</th>
+            </tr>
+          </thead>
+          <tbody id="serversTableBody">
+            <tr>
+              <td colspan="4" style="text-align: center; color: #94a3b8;">
+                Loading...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  console.log('🚀 === SCRIPT STARTED ===');
+  console.log('✅ Script tag loaded');
+  
+  // Check Chart.js availability
+  if (typeof Chart === 'undefined') {
+    console.error('❌ Chart.js is NOT loaded!');
+    document.getElementById('debugStatus').textContent = 'ERROR: Chart.js not loaded';
+    document.getElementById('debugStatus').style.color = '#ef4444';
+  } else {
+    console.log('✅ Chart.js version:', Chart.version);
+    document.getElementById('debugStatus').textContent = 'Chart.js loaded: ' + Chart.version;
+    document.getElementById('debugStatus').style.color = '#22c55e';
+  }
+
+  let distributionChart;
+  let servers = [];
+  let updateInterval;
+
+  // Initialize charts
+  function initCharts() {
+    console.log('📊 initCharts() called');
+    
+    try {
+      const canvas = document.getElementById('distributionChart');
+      if (!canvas) {
+        console.error('❌ Canvas element not found!');
+        return;
+      }
+      console.log('✅ Canvas element found');
+
+      const ctx = canvas.getContext('2d');
+      console.log('✅ Got 2D context');
+
+      distributionChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: [],
+          datasets: [{
+            data: [],
+            backgroundColor: ['#0051c3', '#3b82f6', '#60a5fa', '#93c5fd', '#dbeafe'],
+            borderWidth: 0
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                padding: 15,
+                font: { size: 12, family: 'DM Sans' },
+                color: '#5e6c84'
+              }
+            }
+          }
+        }
+      });
+      console.log('✅ Chart created successfully');
+    } catch (error) {
+      console.error('❌ Error creating chart:', error);
+      document.getElementById('debugStatus').textContent = 'ERROR: ' + error.message;
+      document.getElementById('debugStatus').style.color = '#ef4444';
+    }
+  }
+
+  // Fetch servers
+  function fetchServers() {
+    console.log('🔄 fetchServers() called');
+    
+    fetch('/api/servers')
+      .then(response => {
+        console.log('📡 API response received:', response.status);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then(data => {
+        console.log('📦 Data received:', data);
+        servers = data.servers || [];
+        updateDashboard();
+      })
+      .catch(error => {
+        console.error('❌ Fetch error:', error);
+        document.getElementById('debugStatus').textContent = 'ERROR: Fetch failed - ' + error.message;
+        document.getElementById('debugStatus').style.color = '#ef4444';
+      });
+  }
+
+  // Fetch stats and update cards
+  function fetchStats() {
+    console.log('📊 fetchStats() called');
+    fetch('/api/stats')
+      .then(response => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then(data => {
+        console.log('📦 Stats received:', data);
+        document.getElementById('totalRequests').textContent = data.total_requests || 0;
+        document.getElementById('activeServers').textContent = data.active_servers || 0;
+        document.getElementById('avgResponse').textContent = Math.round(data.avg_response_time || 0) + 'ms';
+        if(document.getElementById('currentAlgorithm')) document.getElementById('currentAlgorithm').textContent = data.algorithm_display || 'Round Robin';
+      })
+      .catch(error => {
+        console.error('❌ Stats fetch error:', error);
+      });
+  }
+
+  // Update dashboard
+  function updateDashboard() {
+    console.log('🔄 updateDashboard() called with', servers.length, 'servers');
+
+    // Update chart
+    if (distributionChart && servers.length > 0) {
+      distributionChart.data.labels = servers.map(s => s.name || s.id);
+      distributionChart.data.datasets[0].data = servers.map(s => s.requests_handled || 0);
+      distributionChart.update();
+      console.log('✅ Chart updated');
+    }
+
+    // Update table
+    const tbody = document.getElementById('serversTableBody');
+    tbody.innerHTML = servers.map(s => `
+      <tr>
+        <td><strong>${s.name || s.id}</strong></td>
+        <td>
+          <span class="badge badge-${s.health === 'healthy' ? 'success' : 'danger'}">
+            ${s.status || 'unknown'}
+          </span>
+        </td>
+        <td>${s.requests_handled || 0}</td>
+        <td>${Math.round(s.response_time || 0)}ms</td>
+      </tr>
+    `).join('');
+    
+    console.log('✅ Dashboard updated successfully');
+  }
+
+  // Send single request
+  function sendSingleRequest() {
+    console.log('📤 sendSingleRequest() called');
+    
+    fetch('/api/send-request', { method: 'POST' })
+      .then(res => res.json())
+      .then(data => {
+        console.log('✅ Request sent:', data);
+        fetchServers();
+      })
+      .catch(err => console.error('❌ Error:', err));
+  }
+
+  // Send multiple requests
+  function sendMultiple() {
+    console.log('📤 sendMultiple() called');
+    
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Sending...';
+
+    fetch('/api/auto-send/100', { method: 'POST' })
+      .then(res => res.json())
+      .then(data => {
+        console.log('✅ Multiple requests sent:', data);
+        btn.disabled = false;
+        btn.textContent = 'Send 100 Requests';
+        fetchServers();
+      })
+      .catch(err => {
+        console.error('❌ Error:', err);
+        btn.disabled = false;
+        btn.textContent = 'Send 100 Requests';
+      });
+  }
+
+  // Change algorithm
+  function changeAlgorithm() {
+    const algo = document.getElementById('algorithmSelect').value;
+    console.log('🔧 Changing algorithm to:', algo);
+    
+    fetch('/api/set-algorithm', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ algorithm: algo })
+    })
+      .then(res => res.json())
+      .then(data => {
+        console.log('✅ Algorithm changed:', data);
+        document.getElementById('currentAlgorithm').textContent = 
+          algo.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      })
+      .catch(err => console.error('❌ Error:', err));
+  }
+
+  // Reset system
+  function resetSystem() {
+    if (!confirm('Reset all statistics?')) return;
+    console.log('🔄 Resetting system...');
+    
+    fetch('/api/reset', { method: 'POST' })
+      .then(res => res.json())
+      .then(data => {
+        console.log('✅ System reset:', data);
+        fetchServers();
+      })
+      .catch(err => console.error('❌ Error:', err));
+  }
+
+  // Export data
+  function exportData() {
+    console.log('📥 Exporting data...');
+    window.location.href = '/api/export-csv';
+  }
+
+  // Refresh servers
+  function refreshServers() {
+    console.log('🔄 Manual refresh triggered');
+    fetchServers();
+  }
+
+  // Initialize on DOM ready
+  console.log('⏳ Waiting for DOMContentLoaded...');
+  document.addEventListener('DOMContentLoaded', () => {
+    console.log('✅ DOM is ready!');
+    console.log('🚀 Initializing application...');
+    
+    try {
+      initCharts();
+      fetchServers();
+      fetchStats();
+      
+      // Auto-refresh every 3 seconds
+      updateInterval = setInterval(() => {
+        console.log('⏰ Auto-refresh triggered');
+        fetchServers();
+        fetchStats();
+      }, 3000);
+      
+      console.log('✅ Application initialized successfully');
+      document.getElementById('debugStatus').textContent = 'All systems operational ✓';
+      document.getElementById('debugStatus').style.color = '#22c55e';
+    } catch (error) {
+      console.error('❌ Initialization error:', error);
+      document.getElementById('debugStatus').textContent = 'Initialization failed: ' + error.message;
+      document.getElementById('debugStatus').style.color = '#ef4444';
+    }
+  });
+
+  // Cleanup on unload
+  window.addEventListener('beforeunload', () => {
+    console.log('🧹 Cleaning up...');
+    if (updateInterval) clearInterval(updateInterval);
+  });
+
+  console.log('📝 Script definition complete');
+  console.log('🎯 Now waiting for DOMContentLoaded event...');
+</script>
+{% endblock %}

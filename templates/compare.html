@@ -1,0 +1,427 @@
+{% extends "base.html" %}
+
+{% block title %}Compare Algorithms{% endblock %}
+
+{% block content %}
+<!-- Page Header -->
+<div class="page-header">
+  <h1 class="page-title">Algorithm Comparison</h1>
+  <p class="page-subtitle">Compare performance metrics across different load balancing algorithms</p>
+</div>
+
+<!-- Comparison Stats -->
+<div class="stats-grid" id="comparisonStats">
+  <div class="stat-card">
+    <div class="stat-label">Algorithms Tested</div>
+    <div class="stat-value" id="algorithmCount">0</div>
+    <div class="stat-change neutral">Total configurations</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Best Avg Response</div>
+    <div class="stat-value" id="bestResponse">-</div>
+    <div class="stat-change positive" id="bestAlgorithm">-</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Most Balanced</div>
+    <div class="stat-value" id="mostBalanced">-</div>
+    <div class="stat-change neutral">Lowest variance</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-label">Total Requests</div>
+    <div class="stat-value" id="totalRequests">0</div>
+    <div class="stat-change neutral">Across all tests</div>
+  </div>
+</div>
+
+<!-- Charts Row -->
+<div class="grid grid-2">
+  <!-- Response Time Comparison -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Average Response Time</h3>
+    </div>
+    <div class="card-body">
+      <div class="chart-container">
+        <canvas id="responseTimeChart"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Request Distribution -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Request Distribution Balance</h3>
+    </div>
+    <div class="card-body">
+      <div class="chart-container">
+        <canvas id="distributionChart"></canvas>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Detailed Comparison Table -->
+<div class="card mt-3">
+  <div class="card-header">
+    <h3 class="card-title">Detailed Performance Metrics</h3>
+    <button class="btn btn-sm btn-secondary" onclick="refreshData()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8M21 3v5h-5M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16M3 21v-5h5"/>
+      </svg>
+      Refresh
+    </button>
+  </div>
+  <div class="card-body">
+    <div class="table-wrapper">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Algorithm</th>
+            <th>Avg Response Time</th>
+            <th>Min / Max</th>
+            <th>Total Requests</th>
+            <th>Load Balance Score</th>
+            <th>Efficiency</th>
+          </tr>
+        </thead>
+        <tbody id="comparisonTableBody">
+          <tr>
+            <td colspan="6" class="text-center text-muted">Loading comparison data...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Algorithm Details Grid -->
+<div class="grid grid-3 mt-3" id="algorithmDetails">
+  <!-- Will be populated dynamically -->
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let responseTimeChart, distributionChart;
+  let comparisonData = [];
+  let predictionsData = {};
+
+  // Initialize charts
+  function initCharts() {
+    // Response Time Chart
+    const respCtx = document.getElementById('responseTimeChart').getContext('2d');
+    responseTimeChart = new Chart(respCtx, {
+      type: 'bar',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Avg Response Time (ms)',
+          data: [],
+          backgroundColor: '#3B82F6',
+          borderRadius: 6,
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(23, 43, 77, 0.95)',
+            titleFont: { family: 'DM Sans' },
+            bodyFont: { family: 'DM Sans' },
+            padding: 10
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(255, 255, 255, 0.06)' },
+            ticks: {
+              font: { family: 'Inter' },
+              color: '#64748B'
+            }
+          },
+          x: {
+            grid: { display: false },
+            ticks: {
+              font: { family: 'Inter' },
+              color: '#64748B'
+            }
+          }
+        }
+      }
+    });
+
+    // Distribution Chart
+    const distCtx = document.getElementById('distributionChart').getContext('2d');
+    distributionChart = new Chart(distCtx, {
+      type: 'radar',
+      data: {
+        labels: [],
+        datasets: []
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              padding: 15,
+              font: { size: 12, family: 'Inter' },
+              color: '#64748B'
+            }
+          }
+        },
+        scales: {
+          r: {
+            beginAtZero: true,
+            grid: { color: 'rgba(255, 255, 255, 0.06)' },
+            ticks: {
+              font: { family: 'Inter' },
+              color: '#64748B',
+              backdropColor: 'transparent'
+            },
+            pointLabels: {
+              font: { family: 'Inter', size: 11 },
+              color: '#64748B'
+            }
+          }
+        }
+      }
+    });
+  }
+
+  // Fetch comparison data
+  async function fetchComparisonData() {
+    try {
+      const res = await fetch('/api/compare');
+      const data = await res.json();
+      comparisonData = data.comparison || [];
+      predictionsData = data.predictions || {};
+      updateDashboard();
+    } catch (error) {
+      console.error('Error fetching comparison data:', error);
+      document.getElementById('comparisonTableBody').innerHTML = `
+        <tr>
+          <td colspan="6">
+            <div class="alert alert-error">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              Failed to load comparison data
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+  }
+
+  // Update dashboard with comparison data
+  function updateDashboard() {
+    if (comparisonData.length === 0) {
+      showEmptyState();
+      return;
+    }
+
+    updateStats();
+    updateCharts();
+    updateTable();
+    updateAlgorithmCards();
+  }
+
+  // Update stats cards
+  function updateStats() {
+    const totalRequests = comparisonData.reduce((sum, d) => sum + d.total_requests, 0);
+    const bestAlgo = comparisonData.reduce((best, curr) => 
+      curr.avg_response_time < best.avg_response_time ? curr : best
+    );
+    
+    // Calculate balance score (lower variance is better)
+    const mostBalanced = comparisonData.reduce((best, curr) => {
+      const variance = calculateVariance(curr.distribution || []);
+      const bestVariance = calculateVariance(best.distribution || []);
+      return variance < bestVariance ? curr : best;
+    });
+
+    document.getElementById('algorithmCount').textContent = comparisonData.length;
+    document.getElementById('totalRequests').textContent = totalRequests;
+    document.getElementById('bestResponse').textContent = bestAlgo.avg_response_time + 'ms';
+    document.getElementById('bestAlgorithm').textContent = formatAlgorithmName(bestAlgo.algorithm);
+    document.getElementById('mostBalanced').textContent = formatAlgorithmName(mostBalanced.algorithm);
+  }
+
+  // Update charts
+  function updateCharts() {
+    // Response Time Chart
+    responseTimeChart.data.labels = comparisonData.map(d => formatAlgorithmName(d.algorithm));
+    responseTimeChart.data.datasets[0].data = comparisonData.map(d => d.avg_response_time);
+    responseTimeChart.update();
+
+    // Distribution Radar Chart
+    if (comparisonData.length > 0 && comparisonData[0].distribution) {
+      const serverLabels = comparisonData[0].distribution.map((_, i) => `Server ${i + 1}`);
+      const colors = ['#3B82F6', '#3b82f6', '#60a5fa', '#93c5fd', '#dbeafe', '#f59e0b'];
+      
+      distributionChart.data.labels = serverLabels;
+      distributionChart.data.datasets = comparisonData.slice(0, 6).map((algo, idx) => ({
+        label: formatAlgorithmName(algo.algorithm),
+        data: algo.distribution || [],
+        borderColor: colors[idx],
+        backgroundColor: colors[idx] + '20',
+        borderWidth: 2,
+        pointBackgroundColor: colors[idx],
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: colors[idx]
+      }));
+      distributionChart.update();
+    }
+  }
+
+  // Update comparison table
+  function updateTable() {
+    const tbody = document.getElementById('comparisonTableBody');
+    
+    tbody.innerHTML = comparisonData.map(algo => {
+      const efficiency = calculateEfficiency(algo);
+      const balanceScore = calculateBalanceScore(algo);
+      
+      return `
+        <tr>
+          <td>
+            <strong>${formatAlgorithmName(algo.algorithm)}</strong>
+            ${algo.algorithm === 'round_robin' ? '<span class="badge badge-info" style="margin-left: 8px;">Default</span>' : ''}
+          </td>
+          <td>
+            <strong>${algo.avg_response_time}ms</strong>
+          </td>
+          <td class="text-small text-muted">
+            ${algo.min_response_time}ms / ${algo.max_response_time}ms
+          </td>
+          <td>${algo.total_requests}</td>
+          <td>
+            <div class="flex-between">
+              <span class="badge ${balanceScore >= 80 ? 'badge-success' : balanceScore >= 60 ? 'badge-warning' : 'badge-error'}">
+                ${balanceScore}%
+              </span>
+            </div>
+          </td>
+          <td>
+            <div class="progress">
+              <div class="progress-bar" style="width: ${efficiency}%"></div>
+            </div>
+            <div class="text-small text-muted mt-1">${efficiency}%</div>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Update algorithm detail cards
+  function updateAlgorithmCards() {
+    const container = document.getElementById('algorithmDetails');
+    
+    container.innerHTML = Object.entries(predictionsData).map(([algoKey, algo]) => `
+      <div class="card fade-in">
+        <div class="card-header">
+          <h3 class="card-title">${algo.display_name || formatAlgorithmName(algoKey)}</h3>
+          <span class="badge badge-info">${algo.total_requests || 0} req</span>
+        </div>
+        <div class="card-body" style="padding: 0 24px 24px;">
+          <div style="display: grid; gap: 12px;">
+            <div class="flex-between">
+              <span class="text-small text-muted">Server Assigned</span>
+              <strong>${algo.server_name || '-'}</strong>
+            </div>
+            <div class="flex-between">
+              <span class="text-small text-muted">Simulated Latency</span>
+              <span class="text-small">${algo.simulated_latency_ms || 0}ms</span>
+            </div>
+            <div class="flex-between">
+              <span class="text-small text-muted">Load Change</span>
+              <span class="text-small">${Math.round(algo.load_before || 0)} → ${Math.round(algo.load_after || 0)}</span>
+            </div>
+            <div class="flex-between">
+              <span class="text-small text-muted">Est. CPU%</span>
+              <span class="badge ${algo.cpu_percent < 80 ? 'badge-success' : 'badge-warning'}">
+                ${Math.round(algo.cpu_percent || 0)}%
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Show empty state
+  function showEmptyState() {
+    document.getElementById('algorithmCount').textContent = '0';
+    document.getElementById('totalRequests').textContent = '0';
+    document.getElementById('bestResponse').textContent = '-';
+    document.getElementById('bestAlgorithm').textContent = 'No data';
+    document.getElementById('mostBalanced').textContent = '-';
+    
+    document.getElementById('comparisonTableBody').innerHTML = `
+      <tr>
+        <td colspan="6" class="text-center">
+          <div style="padding: 40px 20px;">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#8993a4" stroke-width="1.5" style="margin: 0 auto 16px; display: block;">
+              <path d="M3 3v18h18"/>
+              <path d="M18 17V9"/>
+              <path d="M13 17V5"/>
+              <path d="M8 17v-3"/>
+            </svg>
+            <p class="text-muted">No comparison data available yet</p>
+            <p class="text-small text-muted">Send some requests from the Dashboard to start comparing algorithms</p>
+          </div>
+        </td>
+      </tr>
+    `;
+    
+    document.getElementById('algorithmDetails').innerHTML = '';
+  }
+
+  // Helper functions
+  function formatAlgorithmName(algo) {
+    // Backend uses underscores: round_robin, least_connections, weighted
+    return (algo || 'unknown').split(/[_-]/).map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+  }
+
+  function calculateVariance(distribution) {
+    if (!distribution || distribution.length === 0) return 0;
+    const mean = distribution.reduce((a, b) => a + b, 0) / distribution.length;
+    return distribution.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / distribution.length;
+  }
+
+  function calculateBalanceScore(algo) {
+    if (!algo.distribution || algo.distribution.length === 0) return 50;
+    const variance = calculateVariance(algo.distribution);
+    const mean = algo.distribution.reduce((a, b) => a + b, 0) / algo.distribution.length;
+    const cv = mean > 0 ? (Math.sqrt(variance) / mean) : 0;
+    return Math.max(0, Math.min(100, Math.round(100 - (cv * 100))));
+  }
+
+  function calculateEfficiency(algo) {
+    const minPossible = 10;
+    return Math.max(0, Math.min(100, Math.round((minPossible / algo.avg_response_time) * 100)));
+  }
+
+  function refreshData() {
+    fetchComparisonData();
+  }
+
+  // Initialize
+  document.addEventListener('DOMContentLoaded', () => {
+    initCharts();
+    fetchComparisonData();
+    
+    // Auto-refresh every 5 seconds
+    setInterval(fetchComparisonData, 5000);
+  });
+</script>
+{% endblock %}

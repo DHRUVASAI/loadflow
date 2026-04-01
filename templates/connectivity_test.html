@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connectivity Test - LoadFlow</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #f6f8fa;
+      padding: 40px 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 12px;
+      padding: 30px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    h1 { color: #1f2937; margin-bottom: 10px; }
+    .status { 
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+      font-weight: 500;
+    }
+    .status.pending { background: #fef3c7; color: #92400e; }
+    .status.success { background: #d1fae5; color: #065f46; }
+    .status.error { background: #fee2e2; color: #991b1b; }
+    
+    .test { 
+      padding: 15px;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      margin: 15px 0;
+    }
+    .test h3 { 
+      color: #374151;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+    .test-result {
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      padding: 10px;
+      background: #f9fafb;
+      border-radius: 4px;
+      margin-top: 10px;
+      white-space: pre-wrap;
+    }
+    button {
+      background: #0051c3;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 5px;
+    }
+    button:hover { background: #003d91; }
+    button:disabled {
+      background: #94a3b8;
+      cursor: not-allowed;
+    }
+    .icon { display: inline-block; margin-right: 8px; }
+    .buttons { margin: 20px 0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔧 LoadFlow Connectivity Test</h1>
+    <p style="color: #6b7280; margin-bottom: 20px;">
+      This page tests your browser's ability to communicate with the Flask backend.
+    </p>
+
+    <div class="status pending" id="mainStatus">
+      <span class="icon">⏳</span>
+      <span id="statusText">Running diagnostics...</span>
+    </div>
+
+    <!-- Test 1: JavaScript Execution -->
+    <div class="test">
+      <h3>Test 1: JavaScript Execution</h3>
+      <p style="color: #6b7280; font-size: 14px;">Can your browser run JavaScript?</p>
+      <div class="test-result" id="test1">Running...</div>
+    </div>
+
+    <!-- Test 2: Chart.js CDN -->
+    <div class="test">
+      <h3>Test 2: Chart.js CDN Access</h3>
+      <p style="color: #6b7280; font-size: 14px;">Can you reach cdn.jsdelivr.net?</p>
+      <div class="test-result" id="test2">Waiting...</div>
+    </div>
+
+    <!-- Test 3: Backend API -->
+    <div class="test">
+      <h3>Test 3: Backend API Connection</h3>
+      <p style="color: #6b7280; font-size: 14px;">Can you fetch data from Flask?</p>
+      <div class="test-result" id="test3">Waiting...</div>
+    </div>
+
+    <!-- Test 4: POST Request -->
+    <div class="test">
+      <h3>Test 4: Send Request (POST)</h3>
+      <p style="color: #6b7280; font-size: 14px;">Can you send data to Flask?</p>
+      <div class="test-result" id="test4">Waiting...</div>
+    </div>
+
+    <div class="buttons">
+      <button onclick="runAllTests()">🔄 Run All Tests Again</button>
+      <button onclick="window.location.href='/'">📊 Go to Dashboard</button>
+    </div>
+
+    <div style="margin-top: 30px; padding: 20px; background: #f9fafb; border-radius: 8px;">
+      <h3 style="margin-bottom: 10px; color: #374151;">📋 Next Steps:</h3>
+      <ol style="color: #6b7280; line-height: 1.8; padding-left: 20px;">
+        <li>If all tests pass: Main dashboard should work fine</li>
+        <li>If Test 1 fails: Browser is blocking JavaScript</li>
+        <li>If Test 2 fails: CDN is blocked (use local Chart.js - see JAVASCRIPT_FIX.md)</li>
+        <li>If Test 3/4 fail: Flask server not responding</li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- Chart.js CDN - Same as main app -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+  <script>
+    console.log('🚀 Diagnostic script loaded');
+    
+    // Test 1: Basic JavaScript
+    function test1_javascript() {
+      try {
+        const test = "JavaScript works!";
+        document.getElementById('test1').textContent = '✅ PASS: JavaScript is executing correctly';
+        document.getElementById('test1').style.background = '#d1fae5';
+        document.getElementById('test1').style.color = '#065f46';
+        console.log('✅ Test 1 passed');
+        return true;
+      } catch (e) {
+        document.getElementById('test1').textContent = '❌ FAIL: ' + e.message;
+        document.getElementById('test1').style.background = '#fee2e2';
+        document.getElementById('test1').style.color = '#991b1b';
+        console.error('❌ Test 1 failed:', e);
+        return false;
+      }
+    }
+
+    // Test 2: Chart.js availability
+    function test2_chartjs() {
+      try {
+        if (typeof Chart === 'undefined') {
+          throw new Error('Chart.js not loaded from CDN');
+        }
+        document.getElementById('test2').textContent = 
+          `✅ PASS: Chart.js ${Chart.version} loaded successfully`;
+        document.getElementById('test2').style.background = '#d1fae5';
+        document.getElementById('test2').style.color = '#065f46';
+        console.log('✅ Test 2 passed: Chart.js', Chart.version);
+        return true;
+      } catch (e) {
+        document.getElementById('test2').textContent = 
+          `❌ FAIL: ${e.message}\n\nFix: CDN is blocked. Use local Chart.js file (see JAVASCRIPT_FIX.md)`;
+        document.getElementById('test2').style.background = '#fee2e2';
+        document.getElementById('test2').style.color = '#991b1b';
+        console.error('❌ Test 2 failed:', e);
+        return false;
+      }
+    }
+
+    // Test 3: Fetch API (GET)
+    async function test3_fetch() {
+      try {
+        document.getElementById('test3').textContent = '⏳ Fetching /api/servers...';
+        
+        const response = await fetch('/api/servers');
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        if (!data.servers || !Array.isArray(data.servers)) {
+          throw new Error('Invalid response structure');
+        }
+        
+        document.getElementById('test3').textContent = 
+          `✅ PASS: Fetched ${data.servers.length} servers\n` +
+          `Response: ${JSON.stringify(data, null, 2)}`;
+        document.getElementById('test3').style.background = '#d1fae5';
+        document.getElementById('test3').style.color = '#065f46';
+        console.log('✅ Test 3 passed:', data);
+        return true;
+      } catch (e) {
+        document.getElementById('test3').textContent = 
+          `❌ FAIL: ${e.message}\n\nCheck:\n` +
+          `- Is Flask server running?\n` +
+          `- Can you access http://127.0.0.1:5000 ?\n` +
+          `- Is antivirus blocking the connection?`;
+        document.getElementById('test3').style.background = '#fee2e2';
+        document.getElementById('test3').style.color = '#991b1b';
+        console.error('❌ Test 3 failed:', e);
+        return false;
+      }
+    }
+
+    // Test 4: POST Request
+    async function test4_post() {
+      try {
+        document.getElementById('test4').textContent = '⏳ Sending POST to /api/send-request...';
+        
+        const response = await fetch('/api/send-request', { method: 'POST' });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        document.getElementById('test4').textContent = 
+          `✅ PASS: Request sent successfully\n` +
+          `Response: ${JSON.stringify(data, null, 2)}`;
+        document.getElementById('test4').style.background = '#d1fae5';
+        document.getElementById('test4').style.color = '#065f46';
+        console.log('✅ Test 4 passed:', data);
+        return true;
+      } catch (e) {
+        document.getElementById('test4').textContent = 
+          `❌ FAIL: ${e.message}\n\nThe backend might not be responding to POST requests.`;
+        document.getElementById('test4').style.background = '#fee2e2';
+        document.getElementById('test4').style.color = '#991b1b';
+        console.error('❌ Test 4 failed:', e);
+        return false;
+      }
+    }
+
+    // Run all tests
+    async function runAllTests() {
+      console.log('🔄 Running all tests...');
+      document.getElementById('mainStatus').className = 'status pending';
+      document.getElementById('statusText').textContent = 'Running tests...';
+      
+      const results = {
+        test1: test1_javascript(),
+        test2: test2_chartjs(),
+        test3: await test3_fetch(),
+        test4: await test4_post()
+      };
+      
+      const allPassed = Object.values(results).every(r => r === true);
+      const passedCount = Object.values(results).filter(r => r === true).length;
+      
+      if (allPassed) {
+        document.getElementById('mainStatus').className = 'status success';
+        document.getElementById('statusText').textContent = 
+          '✅ All tests passed! Dashboard should work perfectly.';
+        console.log('🎉 All tests passed!');
+      } else {
+        document.getElementById('mainStatus').className = 'status error';
+        document.getElementById('statusText').textContent = 
+          `⚠️ ${passedCount}/4 tests passed. Check failed tests above for fixes.`;
+        console.warn(`⚠️ ${passedCount}/4 tests passed`);
+      }
+    }
+
+    // Auto-run on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      console.log('📋 Starting automatic tests...');
+      runAllTests();
+    });
+  </script>
+</body>
+</html>

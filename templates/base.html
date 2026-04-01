@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}LoadFlow{% endblock %} — Load Balancer Simulator</title>
+  <meta name="description" content="LoadFlow is an interactive load balancer simulator. Monitor, compare, and scale your virtual server infrastructure in real-time.">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <!-- Toast Container -->
+  <div class="toast-container" id="toastContainer"></div>
+  
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="navbar-content">
+      <a href="{{ url_for('landing') }}" class="navbar-brand">
+        <!-- LoadFlow logo: abstract routing / flow paths -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+        LoadFlow
+      </a>
+      <ul class="navbar-nav">
+        <li>
+          <a href="{{ url_for('index') }}" class="nav-link {% if request.endpoint == 'index' %}active{% endif %}">
+            Dashboard
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('servers_page') }}" class="nav-link {% if request.endpoint == 'servers_page' %}active{% endif %}">
+            Servers
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('compare_page') }}" class="nav-link {% if request.endpoint == 'compare_page' %}active{% endif %}">
+            Compare
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('history_page') }}" class="nav-link {% if request.endpoint == 'history_page' %}active{% endif %}">
+            History
+          </a>
+        </li>
+      </ul>
+      <!-- AWS Connection Badge -->
+      <div id="awsStatusBadge" style="
+        display: inline-flex; align-items: center; gap: 7px;
+        padding: 5px 13px; border-radius: 100px; font-size: 12px; font-weight: 600;
+        border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.04);
+        color: #94A3B8; cursor: default;
+        transition: all 0.3s; position: relative;
+      " title="Checking AWS status...">
+        <span id="awsStatusDot" style="width:7px;height:7px;border-radius:50%;background:#64748B;flex-shrink:0;"></span>
+        <span id="awsStatusText">Connecting…</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="container" style="padding-top: 20px;">
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }} fade-in">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="container">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <!-- Global Toast Helper -->
+  <script>
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const toast = document.createElement('div');
+      toast.className = `toast toast-${type}`;
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 300);
+      }, 3000);
+    }
+
+    // AWS Status Badge
+    async function refreshAwsStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const d = await res.json();
+        const badge = document.getElementById('awsStatusBadge');
+        const dot   = document.getElementById('awsStatusDot');
+        const txt   = document.getElementById('awsStatusText');
+        if (!badge) return;
+
+        if (d.aws_connected) {
+          dot.style.background = '#4ADE80';
+          dot.style.boxShadow  = '0 0 6px #4ADE80';
+          txt.textContent = 'AWS Live';
+          badge.style.background    = 'rgba(74,222,128,0.08)';
+          badge.style.border        = '1px solid rgba(74,222,128,0.25)';
+          badge.style.color         = '#4ADE80';
+          const region  = d.region  || '';
+          const account = d.account_id || '';
+          badge.title = `Connected to AWS\nRegion: ${region}${account ? '\nAccount: ' + account : ''}`;
+        } else if (!d.demo_mode) {
+          // Credentials set but STS failed
+          dot.style.background = '#F59E0B';
+          dot.style.boxShadow  = '0 0 6px #F59E0B';
+          txt.textContent = 'AWS (unverified)';
+          badge.style.background = 'rgba(245,158,11,0.08)';
+          badge.style.border     = '1px solid rgba(245,158,11,0.25)';
+          badge.style.color      = '#F59E0B';
+          badge.title = `Credentials configured but STS could not verify.\nRegion: ${d.region || ''}`;
+        } else {
+          dot.style.background = '#64748B';
+          dot.style.boxShadow  = 'none';
+          txt.textContent = 'Demo Mode';
+          badge.style.background = 'rgba(255,255,255,0.04)';
+          badge.style.border     = '1px solid rgba(255,255,255,0.08)';
+          badge.style.color      = '#94A3B8';
+          badge.title = 'Running in demo mode — no real AWS calls.';
+        }
+      } catch(e) {
+        const txt = document.getElementById('awsStatusText');
+        if (txt) txt.textContent = 'Status unknown';
+      }
+    }
+    document.addEventListener('DOMContentLoaded', refreshAwsStatus);
+  </script>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

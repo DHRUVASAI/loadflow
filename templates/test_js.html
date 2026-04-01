@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>JavaScript Diagnostic Test</title>
+</head>
+<body>
+    <h1 style="color: green;">JavaScript Test Page</h1>
+    <button onclick="testBasic()">Test 1: Basic JavaScript</button>
+    <button onclick="testFetch()">Test 2: Fetch API</button>
+    <button onclick="testChart()">Test 3: Chart.js</button>
+    <div id="output" style="margin-top: 20px; padding: 10px; background: #f0f0f0;"></div>
+    
+    <!-- Chart.js CDN - same as in templates -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    
+    <script>
+        console.log('✅ Page loaded - basic JavaScript works!');
+        
+        function testBasic() {
+            document.getElementById('output').innerHTML = '<strong style="color: green;">✅ Basic JavaScript works!</strong>';
+            console.log('✅ Button click works');
+        }
+        
+        function testFetch() {
+            console.log('🔄 Testing fetch API...');
+            fetch('/api/servers')
+                .then(res => {
+                    console.log('✅ Fetch response received:', res.status);
+                    return res.json();
+                })
+                .then(data => {
+                    console.log('✅ JSON parsed:', data);
+                    document.getElementById('output').innerHTML = 
+                        `<strong style="color: green;">✅ Fetch works!</strong><br>` +
+                        `Servers: ${data.servers ? data.servers.length : 0}`;
+                })
+                .catch(err => {
+                    console.error('❌ Fetch error:', err);
+                    document.getElementById('output').innerHTML = 
+                        '<strong style="color: red;">❌ Fetch failed: ' + err.message + '</strong>';
+                });
+        }
+        
+        function testChart() {
+            if (typeof Chart === 'undefined') {
+                document.getElementById('output').innerHTML = 
+                    '<strong style="color: red;">❌ Chart.js not loaded!</strong>';
+                console.error('❌ Chart.js is undefined');
+                return;
+            }
+            document.getElementById('output').innerHTML = 
+                '<strong style="color: green;">✅ Chart.js loaded! Version: ' + Chart.version + '</strong>';
+            console.log('✅ Chart.js available:', Chart.version);
+        }
+        
+        // Auto-test on load
+        setTimeout(() => {
+            console.log('Running auto-tests...');
+            testChart();
+        }, 1000);
+    </script>
+</body>
+</html>

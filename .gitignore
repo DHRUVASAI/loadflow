@@ -1,0 +1,29 @@
+# Environment variables
+.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# IDEs
+.vscode/
+.idea/
+
+# Database
+database.db
+database.db-shm
+database.db-wal
+
+# Logs
+*.log
+flask_debug.log
+
+# Flask sessions
+flask_session/
+
+# Debug files
+rendered_index.html

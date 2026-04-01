@@ -1,0 +1,7 @@
+flask
+boto3
+python-dotenv
+flask-cors
+requests
+flask-session
+
